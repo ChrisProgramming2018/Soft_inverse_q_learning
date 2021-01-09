@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from  torch.distributions.categorical import Categorical
 
+
 class SACActor(nn.Module):
     def __init__(self, state_size, action_size, seed, fc_1=64, fc_2=64):
         super(SACActor, self).__init__()
@@ -40,9 +41,10 @@ class SACActor(nn.Module):
         return action
 
 class QNetwork(nn.Module):
-    def __init__(self, state_size, action_size, fc_1, fc_2):
+    def __init__(self, state_size, action_size, seed, fc_1, fc_2):
         super(QNetwork, self).__init__()
         self.leak = 0.01
+        self.seed = torch.manual_seed(seed)
         self.state_size = state_size
         self.action_size = action_size
         self.layer1 = nn.Linear(state_size, fc_1)
@@ -91,7 +93,7 @@ class SQNetwork(nn.Module):
             fc1_units (int): Number of nodes in first hidden layer
             fc2_units (int): Number of nodes in second hidden layer
         """
-        super(QNetwork, self).__init__()
+        super(SQNetwork, self).__init__()
         self.seed = torch.manual_seed(seed)
         self.fc1 = nn.Linear(state_size, fc1_units)
         self.fc2 = nn.Linear(fc1_units, fc2_units)

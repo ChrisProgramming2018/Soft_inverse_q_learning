@@ -60,7 +60,7 @@ class ReplayBuffer(object):
 
         obses = torch.as_tensor(obses, device=self.device)
         next_obses = torch.as_tensor(next_obses, device=self.device)
-        actions = torch.as_tensor(self.actions[idxs], device=self.device)
+        actions = torch.as_tensor(self.actions[idxs], device=self.device, dtype=torch.int64)
         dones = torch.as_tensor(self.not_dones_no_max[idxs], device=self.device)
 
         return obses, next_obses, actions, dones

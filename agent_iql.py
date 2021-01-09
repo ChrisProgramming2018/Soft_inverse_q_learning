@@ -125,9 +125,7 @@ class Agent():
             next_action_prob, next_action_log_prob = self.policy(next_states)
             next_q_target = (next_action_prob * (min_q_target - self.alpha * next_action_log_prob)).sum(dim=1, keepdim=True)
             rewards = self.R_target(states).detach().gather(1, actions.detach()).squeeze(0)
-            print("dones", dones)
-            next_q_value = rewards + (1 - dones) * self.gamma * next_q_target
-            Q_targets = rewards + (self.gamma * Q_targets_next * (dones))
+            Q_targets = rewards + ((1 - dones) * self.gamma * next_q_target)
         
         loss = F.mse_loss(q_value2, Q_targets.detach()) + F.mse_loss(q_value1, Q_targets.detach())
         
@@ -143,7 +141,7 @@ class Agent():
         # --------------------------update-policy--------------------------------------------------------
         action_prob, log_action_prob = self.policy(states)
         with torch.no_grad():
-            q_pi1, q_pi2 = self.critic(states)
+            q_pi1, q_pi2 = self.qnetwork_local(states)
             min_q_values = torch.min(q_pi1, q_pi2)
         #policy_loss = (action_prob *  ((self.alpha * log_action_prob) - min_q_values).detach()).sum(dim=1).mean()
         policy_loss = (action_prob *  ((self.alpha * log_action_prob) - min_q_values)).sum(dim=1).mean()
@@ -158,7 +156,6 @@ class Agent():
         alpha_loss.backward()
         self.alpha_optim.step()
         self.writer.add_scalar('loss/alpha', alpha_loss, self.steps)
-        self.soft_udapte(self.critic, self.target_critic)
         self.alpha = self.log_alpha.exp()
         
 
@@ -173,11 +170,14 @@ class Agent():
         with torch.no_grad():
             # Get max predicted Q values (for next states) from target model
             #if self.double_dqn:
-            #qt = self.q_shift_local(next_states)
-            #max_q, max_actions = qt.max(1)
-            #Q_targets_next = self.qnetwork_target(next_states).gather(1, max_actions.unsqueeze(1))
+            qt1, qt2 = self.qnetwork_local(next_states)
+            q_min = torch.min(qt1, qt2)
+            max_q, max_actions = q_min.max(1)
+            Q_targets_next1, Q_targets_next2 = self.qnetwork_target(next_states)
+            Q_targets_next = torch.min(Q_targets_next1, Q_targets_next2)
+            Q_targets_next = Q_targets_next.gather(1, max_actions.type(torch.int64).unsqueeze(1))
             #else:
-            Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
+            #Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
             # Compute Q targets for current states
             Q_targets = self.gamma * Q_targets_next * (dones)
 
@@ -375,8 +375,9 @@ class Agent():
             one_hot = torch.Tensor([0 for i in range(self.action_size)], device="cpu")
             one_hot[actions.item()] = 1
             with torch.no_grad():
-                r_values = self.R_local(states.detach()).detach()
-                q_values = self.qnetwork_local(states.detach()).detach()
+                r_values = self.R_local(states)
+                q_values1, q_values2 = self.qnetwork_local(states)
+                q_values = torch.min(q_values1, q_values2)
                 soft_r = F.softmax(r_values, dim=1).to("cpu")
                 soft_q = F.softmax(q_values, dim=1).to("cpu")
                 actions = actions.type(torch.int64)
@@ -403,10 +404,12 @@ class Agent():
         self.writer.add_scalar('KL_q_values', average_q_kl, self.steps)
 
 
-    def act(self, states):
-        states = torch.as_tensor(states, device=self.device).unsqueeze(0)
-        q_values = self.qnetwork_local(states.detach()).detach()
-        action = torch.argmax(q_values).item()
+    def act(self, state):
+        with torch.no_grad():
+            state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+            action_prob, _ = self.policy(state)
+            action = torch.argmax(action_prob)
+            action = action.cpu().numpy()
         return action 
 
 
